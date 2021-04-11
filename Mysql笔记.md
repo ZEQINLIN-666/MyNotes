@@ -1,3 +1,13 @@
+# 1、MYSQL的基础架构
+
+[![c04czn.png](https://z3.ax1x.com/2021/04/11/c04czn.png)](https://imgtu.com/i/c04czn)
+
+
+
+
+
+
+
 # 4、索引
 
 ## 索引的常见类型
