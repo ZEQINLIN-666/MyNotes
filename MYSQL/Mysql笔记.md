@@ -712,3 +712,57 @@ MySQL 的行锁，涉及了**两阶段锁协议、死锁和死锁检测**这两�
 
 第三种方式，会人为造成锁冲突。（开太多连接了）
 
+## 六、InnoDB的事务和锁
+
+### 问题引入:
+
+在可重复读隔离级别，事务T启动的时候会创建一个视图read-view，之后事务T执行期间，即使有其他事务修改了数据，事务T看到的仍然跟在启动时看到的一样。也就是说，一个在可重复读隔离级别下执行的事务，好像不受外界影响。
+
+但是，再行锁中方面，一个事务要更新一行，如果刚好有另外一个事务拥有这一行的行锁，就会被锁住，进入等待状态。
+
+那么问题是：
+
+`既然进入了等待状态，那么等到这个事务自己获取到行锁得更新数据的时候，它读到的值是什么呢？`
+
+### 例子：
+
+```mysql
+CREATE TABLE `t` (
+	`id` int(11) NOT NULL,
+	`k` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE=InnoDB;
+insert into t(id, k) values(1,1),(2,2);
+```
+
+| 事务A                                       | 事务B                                                        | 事务C                              |
+| ------------------------------------------- | ------------------------------------------------------------ | ---------------------------------- |
+| start transaction with consistent snapshot; |                                                              |                                    |
+|                                             | start transaction with consistent snapshot;                  |                                    |
+|                                             |                                                              | update t set k = k+1 where id = 1; |
+|                                             | update t set k = k + 1 where id = 1;             select k from t where id = 1; |                                    |
+| select k from t where id = ; commit;        |                                                              |                                    |
+|                                             | commit;                                                      |                                    |
+
+>需要注意的是：
+>
+>- 事务的启动时机。
+>
+>`begin/start transaction `命令并不是一个事务的起点，在执行到它们之后的第一个操作InnoDB表的语句，事务才真正启动。（这种启动方式，一致性视图是在执行第一个快照读语句时创建的）
+>
+>如果想要马上启动一个事务，可以使用`start transaction with consistent snapshot`这个命令（这种启动方式，一致性视图是在执行该语句时创建的）
+>
+>- 默认autocommit = 1
+
+在上面这个例子中。
+
+- 事务C没有显式地使用begin/commit。表示这个update语句本身就是一个事务，语句完成的时候会自动提交。
+- 事务B在更新了行之后查询
+- 事务A在一个只读事务中查询，并且时间顺序上是在事务B的查询之后。
+
+**这时，事务B查到的k的值是3，而事务A查到的K的值是1**。
+
+---
+
+请解释上面这种情况。
+
